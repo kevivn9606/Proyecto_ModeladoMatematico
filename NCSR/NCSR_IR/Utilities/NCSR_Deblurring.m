@@ -24,119 +24,104 @@
 % Image Processing, vol. 22, no. 4, pp. 1620-1630, Apr. 2013.
 % 
 %--------------------------------------------------------------------------
-function [im_out PSNR SSIM]   =  NCSR_Superresolution( par )
-par.step      =   5;
-par.win       =   6;
-par.cls_num   =   64;
-par.s1        =   25;
-par.hp        =   75;
+function [im_out PSNR SSIM]   =  NCSR_Deblurring( par )
+time0         =   clock;
+bim           =   par.bim;
+[h  w ch]     =   size(bim);
 
-s             =   par.scale;
-lr_im         =   par.LR;
-[lh lw ch]    =   size(lr_im);
-hh            =   lh*s;
-hw            =   lw*s;
-hrim          =   uint8(zeros(hh, hw, ch));
-ori_im        =   zeros(hh,hw);
+par.step      =   2;
+par.win       =   6;
+par.h         =   h;
+par.w         =   w;
+par.cls_num   =   64;
+par.hp        =   80;
+par.s1        =   25;
+dim           =   uint8(zeros(h, w, ch));
+ori_im        =   zeros(h,w);
 
 if  ch == 3
-    lrim           =   rgb2ycbcr( uint8(lr_im) );
-    lrim           =   double( lrim(:,:,1));    
-    b_im           =   imresize( lr_im, s, 'bicubic');
-    b_im2          =   rgb2ycbcr( uint8(b_im) );
-    hrim(:,:,2)    =   b_im2(:,:,2);
-    hrim(:,:,3)    =   b_im2(:,:,3);
+    b_im           =   rgb2ycbcr( uint8(bim) );
+    dim(:,:,2)     =   b_im(:,:,2);
+    dim(:,:,3)     =   b_im(:,:,3);
+    b_im           =   double( b_im(:,:,1));    
     if isfield(par, 'I')
         ori_im         =   rgb2ycbcr( uint8(par.I) );
         ori_im         =   double( ori_im(:,:,1));
     end
 else
-    lrim           =   lr_im;
-    
+    b_im           =   bim;    
     if isfield(par, 'I')
         ori_im             =   par.I;
     end
 end
-hr_im    =   imresize(lrim, s, 'bicubic');
-hr_im    =   Superresolution(lrim, par, ori_im, hr_im, 0, 4);
-% hr_im    =   Superresolution(lrim, par, ori_im, hr_im, 1, 2);
+disp(sprintf('The PSNR of the blurred image = %f \n', csnr(b_im(1:h,1:w), ori_im, 0, 0) ));
+
+d_im    =  Deblurring(b_im, par, ori_im, b_im, 0, 4);
+d_im    =  Deblurring(b_im, par, ori_im, d_im, 1, 2);
 
 if isfield(par,'I')
    [h w ch]  =  size(par.I);
-   PSNR      =  csnr( hr_im(1:h,1:w), ori_im, 0, 0 );
-   SSIM      =  cal_ssim( hr_im(1:h,1:w), ori_im, 0, 0 );
+   PSNR      =  csnr( d_im(1:h,1:w), ori_im, 0, 0 );
+   SSIM      =  cal_ssim( d_im(1:h,1:w), ori_im, 0, 0 );
 end
+
 if ch==3
-    hrim(:,:,1)  =  uint8(hr_im);
-    im_out       =  double(ycbcr2rgb( hrim ));
+    dim(:,:,1)   =  uint8(d_im);
+    im_out       =  double(ycbcr2rgb( dim ));
 else
-    im_out  =  hr_im;
-end
+    im_out  =  d_im;
+end    
+disp(sprintf('Total elapsed time = %f min\n', (etime(clock,time0)/60) ));
 return;
 
 
-function  hr_im     =   Superresolution(lr_im, par, ori_im, hr_im0, flag, K)
-hr_im      =   imresize( lr_im, par.scale, 'bicubic' );
-[h   w]    =   size(hr_im);
+function  d_im     =   Deblurring(b_im, par, ori_im, d_im0, flag, K)
+d_im       =   b_im;
 [h1 w1]    =   size(ori_im);
-y          =   lr_im;
-lamada     =   par.lamada;
+lam        =   zeros(0);
 
-lam       =   zeros(0);
-gam       =   zeros(0);
-beta      =   par.beta;
-BTY       =   par.B'*y(:);
-BTB       =   par.B'*par.B;
-cnt       =   0;
+fft_h      =   par.fft_h;
+Y_f        =   fft2(b_im);
+A_f        =   conj(fft_h).*Y_f;
+H2_f       =   abs(fft_h).^2;
+cnt        =   0;
 if  flag==1  
-     hr_im    =  hr_im0;
+     d_im    =  d_im0;
 end
 
-for k    =  1:60    % K
-    Dict                 =   KMeans_PCA( hr_im, par, par.cls_num );
-    [blk_arr, wei_arr]    =   Block_matching( hr_im, par);
-    
-    %----------------------------------------------------------------------
-    U_arr        =     zeros(par.win^4, size(blk_arr,1), 'single');
-    if (k<=par.K0)  flag1=0;  else flag1=1;  end
-
-    %----------------------------------------------------------------------
-    
+for k    =  1:K
+    Dict                 =   KMeans_PCA( d_im, par, par.cls_num );        
+    [blk_arr wei_arr]    =   Block_matching( d_im, par); 
+            
     if flag==1
-        lam      =   Sparsity_estimation( hr_im, par, Dict, blk_arr, wei_arr );        
+        lam      =   Sparsity_estimation( d_im, par, Dict, blk_arr, wei_arr );        
     end
     Reg          =   @(x, y)NCSR_Regularization(x, y, par, Dict, blk_arr, wei_arr, lam, flag );
-    f            =   hr_im;
+    f            =   d_im;
     X_m          =   Update_NLM( f, par, blk_arr, wei_arr );
-        
-    for  iter    =   1 : 15   % par.iters
-          
+    
+    for  iter    =   1 : par.iters
         cnt      =   cnt  +  1;           
         f_pre    =   f;
    
         if (mod(cnt, 40) == 0)
             if isfield(par,'I')
                 PSNR     =  csnr( f(1:h1,1:w1), ori_im, 0, 0 );
-                fprintf( 'NCSR super-resolution, iter. %d : PSNR = %f\n', cnt, PSNR );
+                fprintf( 'NCSR deblurring: iter. %d : PSNR = %f\n', cnt, PSNR);
             end
-        end
-
-        f        =   f_pre(:);
-        for i = 1:par.n
-            f    =   f + lamada.*(BTY - BTB*f);
-        end
-        
+        end        
+        for  i  =  1 : 3
+            im_f     =   fft2((f_pre));
+            Z_f      =   im_f + (A_f - H2_f.*im_f)./(H2_f + par.eps2);
+            z        =   real(ifft2((Z_f)));
+            f_pre    =   max(min(z,255),0);            
+        end                  
         if ( mod(iter, 2)==0 )
-            X_m    =  Update_NLM( reshape(f, h,w), par, blk_arr, wei_arr );
+            X_m    =  Update_NLM( f_pre, par, blk_arr, wei_arr );
         end                
-        
-        f        =  Reg( reshape(f, h,w), X_m );  
-        
-        [rim, wei, U_arr]      =   Low_rank_appro(f, par, blk_arr', U_arr, iter, flag1 );   
-        f     =    (rim+beta*f)./(wei+beta);
-         
+        f     =  Reg( f_pre, X_m );
     end
-    hr_im   =  f;
+    d_im       =    f;
 end
 
 
@@ -174,9 +159,8 @@ end
 idx       =   s_idx(seg(1)+1:seg(2));
 set       =   1:size(X_m,2);
 set(idx)  =   [];
-
-X_m      =   zeros(length(r)*length(c),b*b,'single');
-X        =   X0';
+X_m       =   zeros(length(r)*length(c),b*b,'single');
+X         =   X0';
 
 for i = 1:par.nblk
    v             =  wei_arr(set,i);
@@ -205,5 +189,3 @@ end
 vu0      =   max(0, vu0-par.nSig^2);
 lam      =   (par.c1*sqrt(2)*par.nSig^2)./(sqrt(vu0) + par.eps);
 return;
-
-

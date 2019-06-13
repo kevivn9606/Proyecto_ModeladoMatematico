@@ -30,11 +30,10 @@ clear;
 fn                 =    'Data\SR_test_images\Butterfly.tif';     
 psf                =    fspecial('gauss', 7, 1.6);
 scale              =    2;
-nSig               =    3.25;
+nSig               =    0;
 
 par                =    NCSR_SR_Par( nSig, scale, psf );
 par.I              =    double( imread( fn ) );
-% par.I              =    par.I(1:128,1:128,:);
 LR                 =    Blur('fwd', par.I, psf);
 LR                 =    LR(1:par.scale:end,1:par.scale:end,:);    
 par.LR             =    Add_noise(LR, nSig);   
@@ -48,3 +47,7 @@ if nSig == 0
 else
     imwrite(im./255, 'Results\SR_results\Noisy\NCSR_Butterfly.tif');
 end
+
+
+
+

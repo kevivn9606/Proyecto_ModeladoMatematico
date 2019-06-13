@@ -24,41 +24,34 @@
 % Image Processing, vol. 22, no. 4, pp. 1620-1630, Apr. 2013.
 % 
 %--------------------------------------------------------------------------
-clc;
-clear;
-
-% fn                 =    'Data\SR_test_images\Butterfly.tif';
-
-Nn = 256;
-addpath(genpath('data_superr_fusion_denois'));
-TR_IMG_PATH = '../../../../data_superr_fusion_denois/chart_and_stuffed_toy_ms';
-img_dir = dir(fullfile(TR_IMG_PATH, '*.png'));
-for ii = 1:length(img_dir)
-    im = imread(fullfile(TR_IMG_PATH, img_dir(ii).name));
-    im = imresize(im, [Nn, Nn]);
-    X(:,:,ii) = im;
+function  X_m   =  Update_NLM( im, opts, blk_arr, wei_arr )
+[h w ch]   =   size(im);
+b          =   opts.win;
+b2         =   b*b*ch;
+k          =   0;
+s          =   opts.step;
+N     =  h-b+1;
+M     =  w-b+1;
+L     =  N*M;
+r     =  [1:s:N];
+r     =  [r r(end)+1:N];
+c     =  [1:s:M];
+c     =  [c c(end)+1:M];
+X     =  zeros(b*b,L,'single');
+for i  = 1:b
+    for j  = 1:b
+        k    =  k+1;
+        blk  =  im(i:h-b+i,j:w-b+j);
+        blk  =  blk(:);
+        X(k,:) =  blk';            
+    end
 end
-X = double (X(:,:,10));
-X = (X./max(X(:)))*255;
-
-
-psf                =    fspecial('gauss', 7, 1.6);
-scale              =    2;
-nSig               =    0;
-
-par                =    NCSR_SR_Par( nSig, scale, psf );
-par.I = double(uint16(X));
-% par.I              =    double( imread( fn ) );
-LR                 =    Blur('fwd', par.I, psf);
-LR                 =    LR(1:par.scale:end,1:par.scale:end,:);    
-par.LR             =    Add_noise(LR, nSig);   
-par.B              =    Set_blur_matrix( par );  
-    
-[im PSNR SSIM]     =    NCSR_Superresolution( par );     
-disp( sprintf('%s :  PSNR = %2.2f  SSIM = %2.4f\n\n', fn, PSNR, SSIM));
-
-if nSig == 0       
-    imwrite(im./255, 'Results\SR_results\Noiseless\NCSR_Butterfly.tif');
-else
-    imwrite(im./255, 'Results\SR_results\Noisy\NCSR_Butterfly.tif');
+X_m     =   zeros(length(r)*length(c),b*b,'single');
+X0      =   X';
+for i = 1:opts.nblk
+   v        =  wei_arr(:,i);
+   X_m      =  X_m(:,:) + X0(blk_arr(:,i),:) .*v(:, ones(1,b2));
 end
+X_m    =   X_m';
+return;
+

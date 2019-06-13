@@ -1,6 +1,6 @@
 function   [dim, wei, U_arr]  =  Low_rank_appro(nim, par, blk_arr, U_arr, it, flag)
 b            =   par.win;
-[h  w ch]    =   size(nim);
+[h, w, ch]    =   size(nim);
 N            =   h-b+1;
 M            =   w-b+1;
 r            =   [1:N];
@@ -14,9 +14,12 @@ T            =   4;
 for  i  =  1 : L
     B          =   X(:, blk_arr(:, i));
     if it==1 || mod(it, T)==0
-        [tmp_y, tmp_w, U_arr(:,i)]   =   Weighted_SVT( double(B), par.c1, par.nSig^2, flag, par.c0 );
+        % [tmp_y, tmp_w, U_arr(:,i)]   =   Weighted_SVT( double(B), par.c1, par.nSig^2, flag, par.c0 );
+        [tmp_y, tmp_w, U_arr(:,i)]   =   Weighted_SVT( double(B), par.c11, 5, flag, par.c0 );
     else
-        [tmp_y, tmp_w]   =   Weighted_SVT_fast( double(B), par.c1, par.nSig^2, U_arr(:,i), flag, par.c0 );
+        % [tmp_y, tmp_w]   =   Weighted_SVT_fast( double(B), par.c1, par.nSig^2, U_arr(:,i), flag, par.c0 );
+        % [tmp_y, tmp_w]   =   Weighted_SVT_fast( double(B), par.c11, 5, U_arr(:,i), flag, par.c0 );
+        [tmp_y, tmp_w, U_arr(:,i)]   =   Weighted_SVT( double(B), par.c11, 5, flag, par.c0 );
     end
     Ys(:, blk_arr(:,i))   =   Ys(:, blk_arr(:,i)) + tmp_y;
     W(:, blk_arr(:,i))    =   W(:, blk_arr(:,i)) + tmp_w;
@@ -36,13 +39,13 @@ return;
 
 
 
-function  [X W U]   =   Weighted_SVT( Y, c1, nsig2, flag, c0 )
-c1                =   c1*sqrt(2);
+function  [X, W, U]   =   Weighted_SVT( Y, c11, nsig2, flag, c0 )
+c11                =   c11*sqrt(2);
 [U0,Sigma0,V0]    =   svd(full(Y),'econ');  
 Sigma0            =   diag(Sigma0);
 if flag==1
     S                 =   max( Sigma0.^2/size(Y, 2), 0 );
-    thr               =   c1*nsig2./ ( sqrt(S) + eps );
+    thr               =   c11*nsig2./ ( sqrt(S) + eps );
     S                 =   soft(Sigma0, thr);
 else  % use nuclear norm
     S                 =   soft(Sigma0, c0*nsig2);
@@ -69,8 +72,8 @@ return;
 %- This function uses the PCA matrixes obtained in the previous iterations
 %- to save computational complexity
 %--------------------------------------------------------------------------
-function  [X W]   =   Weighted_SVT_fast( Y, c1, nsig2, U0, flag, c0 )
-c1                =   c1*sqrt(2);
+function  [X, W]   =   Weighted_SVT_fast( Y, c11, nsig2, U0, flag, c0 )
+c11                =   c11*sqrt(2);
 n                 =   sqrt(length(U0));
 U0                =   reshape(U0, n, n);
 A                 =   U0'*Y;
@@ -79,7 +82,7 @@ V0                =   (diag(1./Sigma0)*A)';
 
 if flag==1
     S                 =   max( Sigma0.^2/size(Y, 2) - 0*nsig2, 0 );
-    thr               =   c1*nsig2./ ( sqrt(S) + eps );
+    thr               =   c11*nsig2./ ( sqrt(S) + eps );
     S                 =   soft(Sigma0, thr);
 else  
     S                 =   soft(Sigma0, c0*nsig2);
